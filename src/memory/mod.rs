@@ -61,16 +61,17 @@ fn init_safe(boot_info: &multiboot2::BootInformation) {
     };
 
     page_table.modify(|mut m| {
-        let page = Page::containing_address(0o001_002_003_004_0000);
+        // test it…
+        let frame = Frame::containing_address(0o001_002_003_004_0000);
         let flags = paging::mapping::PRESENT | paging::mapping::NO_EXECUTE;
-        unsafe{m.identity_map(&page, flags, &mut frame_allocator)};
+        m.identity_map(frame, flags, &mut frame_allocator);
 
         for section in elf_sections_tag.sections() {
-            let start_page = Page::containing_address(section.addr as usize);
-            let end_page = Page::containing_address((section.addr + section.size - 1) as usize);
-            for page_number in start_page.number..(end_page.number + 1) {
-                let page = Page{ number: page_number };
-                unsafe{m.identity_map(&page, flags, &mut frame_allocator)};
+            let start_frame = Frame::containing_address(section.addr as usize);
+            let end_frame = Frame::containing_address((section.addr + section.size - 1) as usize);
+            for frame_number in start_frame.number..(end_frame.number + 1) {
+                let frame = Frame{ number: frame_number };
+                m.identity_map(frame, flags, &mut frame_allocator)};
             }
         }
     });

@@ -33,11 +33,10 @@ impl PageTableModifier {
         p1_entry.set(frame, flags);
     }
 
-    // unsafe because the corresponding frame might not be free
-    pub unsafe fn identity_map<A>(&mut self, page: &Page, flags: EntryFlags, allocator: &mut A)
+    pub fn identity_map<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A)
         where A: FrameAllocator
     {
-        let frame = Frame{ number: page.number };
+        let page = Page{ number: frame.number };
         self.map_to(page, frame, flags, allocator)
     }
 
