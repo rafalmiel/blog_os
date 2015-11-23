@@ -71,6 +71,7 @@ impl FrameAllocator for AreaFrameAllocator {
             } else {
                 // frame is unused, increment `next_free_frame` and return it
                 self.next_free_frame.number += 1;
+                println!("allocated {:?}", frame);
                 return Some(frame);
             }
             // `frame` was not valid, try it again with the updated `next_free_frame`
