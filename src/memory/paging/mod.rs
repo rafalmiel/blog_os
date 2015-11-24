@@ -9,19 +9,13 @@ pub struct PageTable {
 }
 
 impl PageTable {
-    pub fn create_on_identity_mapped_frame(identity_mapped_frame: Frame) -> PageTable {
-        {
-            // frame must be identity mapped
-            let page = Page{number: identity_mapped_frame.number};
-            assert!(!page.is_unused());
-            assert!(!page.p1_table().entry(511).pointed_frame() == frame);
-        }
-
-        let frame_address = identity_mapped_frame.number * PAGE_SIZE;
+    pub fn create_on_identity_mapped_frame(frame: Frame) -> PageTable {
+        assert!(frame.is_identity_mapped());
+        let frame_address = frame.number * PAGE_SIZE;
         let last_entry_address = frame_address + 511 * 8;
-        *(last_entry_address as *mut usize) = frame_address | 0b11;
+        unsafe{ *(last_entry_address as *mut usize) = frame_address | 0b11 };
         PageTable {
-            p4_frame: identity_mapped_frame,
+            p4_frame: frame,
         }
     }
 

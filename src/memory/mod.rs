@@ -27,12 +27,6 @@ pub struct Page {
     number: usize,
 }
 
-impl Page {
-    fn containing_address(address: usize) -> Page {
-        Page{ number: address / PAGE_SIZE }
-    }
-}
-
 pub unsafe fn init(boot_info: &multiboot2::BootInformation) {
     init_safe(boot_info)
 }
@@ -56,9 +50,7 @@ fn init_safe(boot_info: &multiboot2::BootInformation) {
         kernel_end as usize, multiboot_start, multiboot_end, memory_map_tag.memory_areas());
 
     let page_table_frame = Frame::containing_address(unsafe{x86::controlregs::cr3()} as usize);
-    let mut page_table = unsafe {
-        paging::PageTable::create_on_identity_mapped_frame(page_table_frame)
-    };
+    let mut page_table = paging::PageTable::create_on_identity_mapped_frame(page_table_frame);
 
     page_table.modify(|mut m| {
         // test it…
@@ -71,7 +63,7 @@ fn init_safe(boot_info: &multiboot2::BootInformation) {
             let end_frame = Frame::containing_address((section.addr + section.size - 1) as usize);
             for frame_number in start_frame.number..(end_frame.number + 1) {
                 let frame = Frame{ number: frame_number };
-                m.identity_map(frame, flags, &mut frame_allocator)};
+                m.identity_map(frame, flags, &mut frame_allocator);
             }
         }
     });

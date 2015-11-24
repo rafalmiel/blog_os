@@ -37,7 +37,7 @@ impl PageTableModifier {
         where A: FrameAllocator
     {
         let page = Page{ number: frame.number };
-        self.map_to(page, frame, flags, allocator)
+        self.map_to(&page, frame, flags, allocator)
     }
 
 
@@ -146,5 +146,12 @@ bitflags! {
         const OTHER1 =          1 << 9,
         const OTHER2 =          1 << 10,
         const NO_EXECUTE =      1 << 63,
+    }
+}
+
+impl Frame {
+    pub fn is_identity_mapped(&self) -> bool {
+        let page = Page{number: self.number};
+        !page.is_unused() && page.p1_table().entry(page.p1_index()).pointed_frame() == *self
     }
 }
