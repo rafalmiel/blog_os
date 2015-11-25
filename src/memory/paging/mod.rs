@@ -9,11 +9,15 @@ pub struct PageTable {
 }
 
 impl PageTable {
-    pub fn create_on_identity_mapped_frame(frame: Frame) -> PageTable {
-        assert!(frame.is_identity_mapped());
+    pub unsafe fn create_on_identity_mapped_frame(frame: Frame) -> PageTable {
+        //assert!(frame.is_identity_mapped());
         let frame_address = frame.number * PAGE_SIZE;
         let last_entry_address = frame_address + 511 * 8;
-        unsafe{ *(last_entry_address as *mut usize) = frame_address | 0b11 };
+        unsafe {
+            //TODO add a seperate `new table` funciton
+            *(last_entry_address as *mut [u64; 512]) = [0; 512];
+            *(last_entry_address as *mut usize) = frame_address | 0b11;
+        }
         PageTable {
             p4_frame: frame,
         }

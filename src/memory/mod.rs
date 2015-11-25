@@ -50,9 +50,18 @@ fn init_safe(boot_info: &multiboot2::BootInformation) {
         kernel_end as usize, multiboot_start, multiboot_end, memory_map_tag.memory_areas());
 
     let page_table_frame = Frame::containing_address(unsafe{x86::controlregs::cr3()} as usize);
-    let mut page_table = paging::PageTable::create_on_identity_mapped_frame(page_table_frame);
+    println!("page_table_frame {:?}", page_table_frame);
+    /*let mut page_table = unsafe {
+        paging::PageTable::create_on_identity_mapped_frame(page_table_frame);
+    };*/
 
-    page_table.modify(|mut m| {
+    let mut new_page_table = unsafe {
+        paging::PageTable::create_on_identity_mapped_frame(
+        frame_allocator.allocate_frame().expect("no frame left"))
+    };
+
+
+    new_page_table.modify(|mut m| {
         // test it…
         let frame = Frame::containing_address(0o001_002_003_004_0000);
         let flags = paging::mapping::PRESENT | paging::mapping::NO_EXECUTE;
@@ -61,6 +70,15 @@ fn init_safe(boot_info: &multiboot2::BootInformation) {
         for section in elf_sections_tag.sections() {
             let start_frame = Frame::containing_address(section.addr as usize);
             let end_frame = Frame::containing_address((section.addr + section.size - 1) as usize);
+
+            let mut flags = paging::mapping::PRESENT;
+            if section.flags & multiboot2::ElfSectionFlags::Writable as u64 != 0 {
+                flags = flags | paging::mapping::WRITABLE;
+            }
+            if section.flags & multiboot2::ElfSectionFlags::Executable as u64 == 0 {
+                flags = flags | paging::mapping::NO_EXECUTE;
+            }
+
             for frame_number in start_frame.number..(end_frame.number + 1) {
                 let frame = Frame{ number: frame_number };
                 m.identity_map(frame, flags, &mut frame_allocator);

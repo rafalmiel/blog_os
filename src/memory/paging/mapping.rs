@@ -98,6 +98,8 @@ struct Table(Page);
 impl Table {
     unsafe fn zero(&mut self) {
         const ENTRIES: usize = PAGE_SIZE / 8;
+        println!("0x{:x}", self.0.number);
+        loop {}
         let page = self.0.pointer() as *mut () as *mut [u64; ENTRIES];
         *page = [0; ENTRIES];
     }
@@ -152,6 +154,9 @@ bitflags! {
 impl Frame {
     pub fn is_identity_mapped(&self) -> bool {
         let page = Page{number: self.number};
+        println!("{:?}", page.is_unused());
+        println!("{:?}", page.p1_table().entry(page.p1_index()).pointed_frame());
+        println!("{:?}", self);
         !page.is_unused() && page.p1_table().entry(page.p1_index()).pointed_frame() == *self
     }
 }

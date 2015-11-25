@@ -38,6 +38,8 @@ pub extern fn rust_main(multiboot_information_address: usize) {
         memory::init(&boot_info);
     }
 
+    println!("done");
+
     loop{}
 }
 
