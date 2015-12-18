@@ -25,12 +25,17 @@ SECTIONS {
     *(.rodata .rodata.*)
   }
 
-  .text :
+  .text : ALIGN(4K)
   {
     *(.text .text.*)
   }
 
-  .data.rel.ro : {
+  .data : ALIGN(4K)
+  {
+    *(.data .data.*)
+  }
+
+  .data.rel.ro : ALIGN(4K) {
     *(.data.rel.ro.local*) *(.data.rel.ro .data.rel.ro.*)
   }
 }
