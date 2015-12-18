@@ -143,6 +143,47 @@ impl RecursivePageTable {
         // TODO free p(1,2,3) table if empty
         //allocator.deallocate_frame(frame);
     }
+
+    pub fn with<F>(&mut self, table: &mut InactivePageTable, f: F)
+        where F: FnOnce(&mut RecursivePageTable)
+    {
+        let backup = self.recursive_frame();
+        self.set_recursive_frame(Frame { number: table.p4_frame.number });
+        f(self);
+        self.set_recursive_frame(Frame { number: backup.number });
+        self.set_recursive_frame(backup);
+    }
+
+    fn recursive_frame(&self) -> Frame {
+        self.p4()[511].pointed_frame().unwrap()
+    }
+
+    fn set_recursive_frame(&mut self, frame: Frame) {
+        self.p4_mut()[511].set(frame, PRESENT | WRITABLE);
+        unsafe { ::x86::tlb::flush_all() };
+    }
+}
+
+pub struct InactivePageTable {
+    p4_frame: Frame,
+}
+
+impl InactivePageTable {
+    pub fn new_on_identity_mapped_frame(frame: Frame,
+                                        active_table: &RecursivePageTable)
+                                        -> InactivePageTable {
+        use self::table::Level1;
+
+        // frame must be identity mapped
+        assert!(active_table.translate(frame.start_address()) == Some(frame.start_address()));
+
+        // Level1 because we don't want that the `next_table` functions are available
+        let table = unsafe { &mut *(frame.start_address() as *mut Table<Level1>) };
+        table.zero();
+        table[511].set(Frame { number: frame.number }, PRESENT | WRITABLE);
+
+        InactivePageTable { p4_frame: frame }
+    }
 }
 
 pub fn test_paging<A>(allocator: &mut A)
@@ -170,9 +211,8 @@ pub fn test_paging<A>(allocator: &mut A)
     println!("next free frame: {:?}", allocator.allocate_frame());
 
     // test unmap
-    println!("{:#x}", unsafe {
-        *(Page::containing_address(addr).start_address() as *const u64)
-    });
+    println!("{:#x}",
+             unsafe { *(Page::containing_address(addr).start_address() as *const u64) });
     page_table.unmap(Page::containing_address(addr), allocator);
     println!("None = {:?}", page_table.translate(addr));
 }

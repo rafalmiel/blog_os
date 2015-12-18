@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #![feature(lang_items)]
-#![feature(const_fn, unique, core_str_ext, iter_cmp)]
+#![feature(const_fn, unique, core_str_ext, iter_cmp, step_by)]
 #![no_std]
 
 extern crate rlibc;
@@ -29,6 +29,8 @@ mod memory;
 
 #[no_mangle]
 pub extern fn rust_main(multiboot_information_address: usize) {
+    use memory::FrameAllocator;
+
     // ATTENTION: we have a very small stack and no guard page
     vga_buffer::clear_screen();
     println!("Hello World{}", "!");
@@ -58,9 +60,22 @@ pub extern fn rust_main(multiboot_information_address: usize) {
     println!("multiboot start: 0x{:x}, multiboot end: 0x{:x}", multiboot_start, multiboot_end);
 
     let mut frame_allocator = memory::AreaFrameAllocator::new(kernel_start as usize,
-        kernel_end as usize, multiboot_start, multiboot_end, memory_map_tag.memory_areas());
+                                                              kernel_end as usize,
+                                                              multiboot_start,
+                                                              multiboot_end,
+                                                              memory_map_tag.memory_areas());
 
-    memory::test_paging(&mut frame_allocator);
+    // IMPORTANT!!! The first allocated frame is 0. Using it in memory::init as a new identity mapped
+    // page table causes HUGE problems since Rust assumes that pointers aren't zero. First, the
+    // Table::zero method would silently fail since the self pointer and thus the address of the
+    // entries array is 0. When we try to iterate over the array to zero each entry this fails silently
+    // because the `iter_mut` method returns a IterMut struct, which is an iterator that returns
+    // `Option<&T>` in `next`. The problem is that the NonZero trait is implemented for references and
+    // thus the 0 pointer is used to store the None variant. Thus the iterator returns None right in
+    // the first iteration and no entries are zeroed at all.
+    let _ = frame_allocator.allocate_frame();
+
+    memory::init(&mut frame_allocator, boot_info);
 
     loop{}
 }
