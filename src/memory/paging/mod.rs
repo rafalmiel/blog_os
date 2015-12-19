@@ -1,6 +1,6 @@
 pub use self::entry::*;
 use memory::{PAGE_SIZE, Frame, FrameAllocator};
-use self::table::{Table, Level4};
+use self::table::{Table, Level4, Level1};
 use core::ptr::Unique;
 
 mod entry;
@@ -43,11 +43,18 @@ impl Page {
 
 pub struct RecursivePageTable {
     p4: Unique<Table<Level4>>,
+    temporary_page: Page,
 }
 
 impl RecursivePageTable {
-    pub unsafe fn new() -> RecursivePageTable {
-        RecursivePageTable { p4: Unique::new(table::P4) }
+    pub unsafe fn new<A>(allocator: &mut A) -> RecursivePageTable where A: FrameAllocator {
+        let temporary_page = Page {number: 0xcafebabe };
+        let mut table = RecursivePageTable {
+            p4: Unique::new(table::P4),
+            temporary_page: Page {number: temporary_page.number },
+        };
+        table.create_tables(&temporary_page, allocator);
+        table
     }
 
     fn p4(&self) -> &Table<Level4> {
@@ -102,13 +109,18 @@ impl RecursivePageTable {
           .or_else(huge_page)
     }
 
-    pub fn map_to<A>(&mut self, page: Page, frame: Frame, flags: EntryFlags, allocator: &mut A)
+    fn create_tables<A>(&mut self, page: &Page, allocator: &mut A) -> &mut Table<Level1>
         where A: FrameAllocator
     {
         let mut p3 = self.p4_mut().next_table_create(page.p4_index(), allocator);
         let mut p2 = p3.next_table_create(page.p3_index(), allocator);
-        let mut p1 = p2.next_table_create(page.p2_index(), allocator);
+        p2.next_table_create(page.p2_index(), allocator)
+    }
 
+    pub fn map_to<A>(&mut self, page: Page, frame: Frame, flags: EntryFlags, allocator: &mut A)
+        where A: FrameAllocator
+    {
+        let p1 = self.create_tables(&page, allocator);
         assert!(p1[page.p1_index()].is_unused());
         p1[page.p1_index()].set(frame, flags | PRESENT);
     }
@@ -147,20 +159,47 @@ impl RecursivePageTable {
     pub fn with<F>(&mut self, table: &mut InactivePageTable, f: F)
         where F: FnOnce(&mut RecursivePageTable)
     {
-        let backup = self.recursive_frame();
-        self.set_recursive_frame(Frame { number: table.p4_frame.number });
-        f(self);
-        self.set_recursive_frame(Frame { number: backup.number });
-        self.set_recursive_frame(backup);
-    }
+        use self::table::Level1;
+        use x86::{controlregs, tlb};
+        use memory::EmptyFrameAllocator;
 
-    fn recursive_frame(&self) -> Frame {
-        self.p4()[511].pointed_frame().unwrap()
-    }
+        // map temporary_page to current p4 table
+        let backup = Frame::containing_address(unsafe{controlregs::cr3()} as usize);
+        let temporary_page = Page { number: self.temporary_page.number };
+        {
+            let p1 = self.create_tables(&temporary_page, &mut EmptyFrameAllocator);
+            p1[temporary_page.p1_index()].set(Frame{number:backup.number}, PRESENT | WRITABLE);
+        }
 
-    fn set_recursive_frame(&mut self, frame: Frame) {
-        self.p4_mut()[511].set(frame, PRESENT | WRITABLE);
+        // overwrite recursive mapping
+        self.p4_mut()[511].set(Frame{number: table.p4_frame.number}, PRESENT | WRITABLE);
         unsafe { ::x86::tlb::flush_all() };
+
+        // execute f in the new context
+        f(self);
+
+        // restore recursive mapping to original p4 table
+        let p4_table = unsafe { &mut *(temporary_page.start_address() as *mut Table<Level1>) };
+        p4_table[511].set(backup, PRESENT | WRITABLE);
+        unsafe { tlb::flush_all() };
+
+        // unmap temporary page
+        {
+            let p1 = self.create_tables(&temporary_page, &mut EmptyFrameAllocator);
+            p1[temporary_page.p1_index()].set_unused();
+        }
+    }
+
+    pub fn swap(&mut self, new_table: InactivePageTable) -> InactivePageTable {
+        use x86::{controlregs, tlb};
+
+        let old_table = InactivePageTable {
+            p4_frame: Frame::containing_address(unsafe{controlregs::cr3()} as usize),
+        };
+        unsafe {
+            controlregs::cr3_write(new_table.p4_frame.start_address() as u64);
+        }
+        old_table
     }
 }
 
@@ -189,7 +228,7 @@ impl InactivePageTable {
 pub fn test_paging<A>(allocator: &mut A)
     where A: FrameAllocator
 {
-    let mut page_table = unsafe { RecursivePageTable::new() };
+    let mut page_table = unsafe { RecursivePageTable::new(allocator) };
 
     // test translate
     println!("Some = {:?}", page_table.translate(0));
