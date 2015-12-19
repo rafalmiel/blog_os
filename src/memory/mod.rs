@@ -28,6 +28,15 @@ pub trait FrameAllocator {
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
+struct EmptyFrameAllocator;
+
+impl FrameAllocator for EmptyFrameAllocator {
+    fn allocate_frame(&mut self) -> Option<Frame> { None }
+    fn deallocate_frame(&mut self, frame: Frame) {
+        unimplemented!();
+    }
+}
+
 pub fn init<A>(allocator: &mut A, boot_info: &BootInformation)
     where A: FrameAllocator
 {
