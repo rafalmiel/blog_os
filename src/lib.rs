@@ -18,7 +18,7 @@
 extern crate rlibc;
 
 #[no_mangle]
-pub extern fn rust_main() {
+pub extern "C" fn rust_main() {
     // ATTENTION: we have a very small stack and no guard page
 
     let hello = b"Hello World!";
@@ -33,13 +33,13 @@ pub extern fn rust_main() {
     let buffer_ptr = (0xb8000 + 1988) as *mut _;
     unsafe { *buffer_ptr = hello_colored };
 
-    loop{}
+    loop {}
 }
 
 #[cfg(not(test))]
 #[lang = "eh_personality"]
-extern fn eh_personality() {}
+extern "C" fn eh_personality() {}
 
 #[cfg(not(test))]
 #[lang = "panic_fmt"]
-extern fn panic_fmt() -> ! {loop{}}
+extern fn "C" panic_fmt() -> ! {loop{}}
